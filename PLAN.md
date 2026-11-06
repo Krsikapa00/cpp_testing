@@ -2,14 +2,15 @@
 
 **Goal:** move from embedded C to embedded C++ before starting a drone flight-controller role, by building one firmware that grows from a blinking LED into a self-levelling servo platform with the structure of a flight controller.
 
-**Timeline:** four weeks from 2026-11-05, at an assumed 10 hours a week. The role starts by about 2026-12-05.
+**Timeline:** four weeks from 2026-11-05. The role starts by about 2026-12-05. Week 1 has extra time, so aim to finish Projects 1 and 2 in it, then about 10 hours a week after that.
 
 **Background:** the company's stack is described in [stackDescription.md](stackDescription.md). I mostly write application-level C on an RTOS, using a vendor HAL or existing drivers, with some register-level experience and some non-embedded C++.
 
 ## Progress
 
+- [x] Environment set up and tested ([setup guide](docs/environment-setup.md))
 - [ ] Parts ordered
-- [ ] Project 1: Bring-up and GPIO
+- [ ] Project 1: Bring-up and GPIO ([brief](docs/project-1-brief.md))
 - [ ] Project 2: FreeRTOS wrappers and UART logger
 - [ ] Project 3: Actuators and fixed-rate task
 - [ ] Project 4: SPI IMU driver
@@ -63,39 +64,11 @@ These match how the company writes code, or stand in for it where the hardware d
 
 ### PlatformIO
 
-This is a starting point that hasn't been built yet. Project 1 proves it out and corrects it.
-
-```ini
-[platformio]
-default_envs = nucleo_f446re
-
-[env:nucleo_f446re]
-platform = ststm32@20.0.0
-board = nucleo_f446re
-framework = cmsis
-upload_protocol = stlink
-debug_tool = stlink
-build_unflags = -std=gnu++14 -std=gnu++17
-build_flags =
-    -std=gnu++11
-    -fno-exceptions -fno-rtti -fno-threadsafe-statics
-    -Wall -Wextra -Wpedantic -Wdouble-promotion
-    -mfpu=fpv4-sp-d16 -mfloat-abi=hard
-
-[env:native]
-platform = native
-test_framework = unity
-build_flags = -std=gnu++11 -Wall -Wextra -Wpedantic
-```
-
-To check in Project 1:
-
-- **C++ standard:** a verbose build shows that `-std=gnu++11` is the only standard flag in use.
-- **Hard float:** the FPU flags reach the linker as well as the compiler, which may need a small PlatformIO extra script. The FreeRTOS `ARM_CM4F` port won't compile without hard float.
+[docs/environment-setup.md](docs/environment-setup.md) covers the configuration, why each setting is there, how to set up another device, and how to reuse it for new projects.
 
 ### FreeRTOS
 
-The registry's FreeRTOS packages are old or third-party, so use the official kernel:
+This is the Project 2 plan, and it hasn't been built yet. The registry's FreeRTOS packages are old or third-party, so use the official kernel:
 
 - **Source:** add [FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) as a git submodule pinned to a release tag, under `lib/freertos/kernel`, with a `library.json` beside it selecting the core files and the `GCC/ARM_CM4F` port.
 - **No heap:** set `configSUPPORT_STATIC_ALLOCATION` to 1 and `configSUPPORT_DYNAMIC_ALLOCATION` to 0, and leave out every `heap_x.c`. Provide `vApplicationGetIdleTaskMemory`, plus `vApplicationGetTimerTaskMemory` if timers are on.
@@ -106,6 +79,8 @@ The registry's FreeRTOS packages are old or third-party, so use the official ker
 ### Repo layout
 
 ```
+docs/            Setup guide and project briefs
+scripts/         PlatformIO build scripts
 lib/
   freertos/      kernel submodule, library.json
   rtos/          Task, Queue, Mutex wrappers
@@ -118,18 +93,11 @@ test/            PC unit tests
 tools/           Python telemetry and command scripts
 ```
 
-### Using another device
-
-1. Install VS Code and the PlatformIO extension.
-2. Run `git clone --recursive <repo>`. The flag also fetches the FreeRTOS submodule.
-3. Run `pio run`, which installs the pinned toolchain.
-4. Run `pio test -e native` to run the PC tests. This needs a host `gcc` on `PATH`.
-
-Add `.pio/` to `.gitignore`.
-
 ## Projects
 
 ### Project 1: Bring-up and GPIO (week 1, no RTOS)
+
+Full details are in the [Project 1 brief](docs/project-1-brief.md).
 
 **Build:** PlatformIO setup, 180 MHz clock configuration, a `Gpio<PortBase, Pin>` template, a SysTick tick and a button interrupt.
 
@@ -227,7 +195,7 @@ Keep the RTOS wrappers, ring buffer, IMU driver and top-level composition, as th
 
 ## C++11 reference
 
-These were compile-tested with `-std=gnu++11` on GCC 5.4 (host) and Arm GCC 7.2 except where noted. The STM32 platform may install a newer Arm GCC, so behaviour could differ slightly.
+These were compile-tested with `-std=gnu++11` on GCC 5.4 (host) and Arm GCC 7.2 (the firmware compiler) except where noted.
 
 | Not available or not usable | Use instead |
 |---|---|
@@ -259,6 +227,7 @@ These were compile-tested with `-std=gnu++11` on GCC 5.4 (host) and Arm GCC 7.2 
 - **Hidden heap use:** `std::function` can allocate, and `std::vector` and `std::string` normally do. Newlib's `printf` family can too.
 - **`volatile` isn't enough:** it doesn't make data shared with an interrupt or task safe. Use `std::atomic` or a critical section.
 - **Exceptions are off:** `std::array::at()` can't report an error normally, so use a bounds check of your own.
+- **`F_CPU` is misleading:** PlatformIO defines it as 180 MHz, but the chip starts at 16 MHz until your code changes the clock. Use `SystemCoreClock`.
 
 **With FreeRTOS:**
 
