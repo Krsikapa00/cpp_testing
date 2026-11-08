@@ -34,7 +34,14 @@ PlatformIO downloads everything marked `platformio.ini`, STM32 platform or `pio 
    ```
 
 5. **Open the folder in VS Code** and let PlatformIO finish its first-time setup.
-6. **Run the three checks below.** Use the PlatformIO Core CLI terminal from the PlatformIO sidebar if `pio` isn't on your `PATH`.
+6. **Run the checks.** The setup check script runs all of them and reports each one:
+
+   | OS | Command |
+   |---|---|
+   | Windows | `powershell -ExecutionPolicy Bypass -File scripts/check-setup.ps1 -Board` |
+   | Linux | `bash scripts/check-setup.sh --board` |
+
+   [CLAUDE.md](../CLAUDE.md#scripts) describes all the scripts. To run the checks by hand instead, use the table below. Use the PlatformIO Core CLI terminal from the PlatformIO sidebar if `pio` isn't on your `PATH`.
 
    | Command | What it proves | Expected result |
    |---|---|---|
