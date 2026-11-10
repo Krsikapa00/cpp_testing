@@ -1,0 +1,25 @@
+{
+  "name": "FreeRTOS-Kernel",
+  "version": "11.3.3",
+  "description": "Official FreeRTOS kernel (git submodule in ./kernel), built with the GCC ARM_CM4F port and no heap_x.c. Configured by include/FreeRTOSConfig.h in the project.",
+  "frameworks": "cmsis",
+  "platforms": "ststm32",
+  "build": {
+    "srcDir": "kernel",
+    "includeDir": "kernel/include",
+    "srcFilter": [
+      "-<*>",
+      "+<tasks.c>",
+      "+<queue.c>",
+      "+<list.c>",
+      "+<timers.c>",
+      "+<event_groups.c>",
+      "+<stream_buffer.c>",
+      "+<portable/GCC/ARM_CM4F/port.c>"
+    ],
+    "flags": [
+      "-Ikernel/portable/GCC/ARM_CM4F",
+      "-I$PROJECT_INCLUDE_DIR"
+    ]
+  }
+}

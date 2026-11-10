@@ -1,20 +1,18 @@
 #include "stm32f4xx.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "gpio.hpp"
 #include "clock.hpp"
 #include <atomic>
+#include <cstddef>
 
-std::atomic<std::uint32_t> msCounter{0};
+// std::atomic<std::uint32_t> msCounter{0};
 std::atomic<bool> btnPressed{false};
 
 using Btn1 = hal::Gpio<GPIOC_BASE, 13>;
 uint32_t getTimeMs();
 
 extern "C" {
-    void SysTick_Handler(void)
-    {
-        msCounter++;
-    }
-
     void EXTI15_10_IRQHandler(void)
     {
         if (EXTI->PR & EXTI_PR_PR13) {
@@ -24,9 +22,6 @@ extern "C" {
     }
 }
 
-uint32_t getTimeMs() {
-    return msCounter;
-}
 
 void configureBtn() {
     RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
@@ -40,42 +35,55 @@ void configureBtn() {
     EXTI->RTSR &= ~EXTI_RTSR_TR13;
 
     NVIC_EnableIRQ(EXTI15_10_IRQn);
+    NVIC_SetPriority(EXTI15_10_IRQn, 5);
 }
 
-int main()
-{
-    hal::clock::init();
+static StackType_t blinkTaskStack[configMINIMAL_STACK_SIZE];
+static StaticTask_t blinkTaskTCB;
 
+void blinkTask(void *arg)
+{
+    (void) arg;
     uint32_t delayCount = 1000; // ms Delay
     using Led = hal::Gpio<GPIOA_BASE, 5>;
     Led::enableClock();
     Led::setMode(hal::PinMode::Output);
-    const uint32_t tickCfg = SystemCoreClock / 1000;
-    SysTick_Config(tickCfg);
 
     Btn1::enableClock();
     Btn1::setMode(hal::PinMode::Input);
 
     configureBtn();
 
-    std::uint32_t last = getTimeMs();
-    std::uint32_t now  = getTimeMs();
+    TickType_t last = xTaskGetTickCount();
     std::uint32_t lastPressed{0};
 
     while (true)
     {
         // Btn pressed check
         bool pressedCheck = btnPressed.exchange(false);
-        if (pressedCheck && (getTimeMs() - lastPressed > 50)) {
-            lastPressed = getTimeMs();
+        if (pressedCheck && (xTaskGetTickCount() - lastPressed > 50)) {
+            lastPressed = xTaskGetTickCount();
             delayCount  = (delayCount == 1000)? 500: 1000;
         }
 
         // LED updates
-        now = getTimeMs();
-        if (now - last >= delayCount) {
-            last = now;
-            Led::toggle();
-        }
+        xTaskDelayUntil(&last, delayCount);
+        Led::toggle();
     }
 }
+
+int main()
+{
+    hal::clock::init();
+
+    xTaskCreateStatic(  blinkTask,
+                        "Blink Task",
+                        configMINIMAL_STACK_SIZE,
+                        0,
+                        tskIDLE_PRIORITY + 1,
+                        blinkTaskStack,
+                        &blinkTaskTCB);
+
+    vTaskStartScheduler();
+}
+

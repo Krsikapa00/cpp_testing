@@ -6,7 +6,7 @@ Prep repo for a drone flight-controller role: learning embedded C++11 on a NUCLE
 
 ## Start here on a new device
 
-1. **Set up the environment** following [docs/environment-setup.md](docs/environment-setup.md): VS Code with the PlatformIO IDE extension, a host `g++`, and USB access to the ST-LINK. On Linux, that means the PlatformIO udev rules.
+1. **Set up the environment** following [docs/new-machine-setup.md](docs/new-machine-setup.md): VS Code with the PlatformIO IDE extension, a host `g++`, and USB access to the ST-LINK. On Linux, that means `python3-venv`, the PlatformIO udev rules and the `dialout` group.
 2. **Get the latest work** with `git pull`. The check script also runs `git submodule update --init --recursive`, which matters from Project 2.
 3. **Run the setup check** with the board plugged in:
 
@@ -33,7 +33,15 @@ Each script has a Windows (`.ps1`) and Linux (`.sh`) version that behave the sam
 
 *Last updated 2026-11-09, on Windows.*
 
-**Project 1: Bring-up and GPIO** ([brief](docs/project-1-brief.md)), in progress:
+**Project 2: FreeRTOS wrappers and UART logger** ([brief](docs/project-2-brief.md)), **started 2026-11-09. Next: "Before you start" in the brief.**
+- **Set up:** the kernel build, tested on the board with a throwaway program. That covers the submodule `lib/freertos/kernel` at V11.3.3, `lib/freertos/library.json` and `include/FreeRTOSConfig.h`. `src/main.cpp` doesn't include `FreeRTOS.h` yet, so the current build doesn't link the kernel.
+- **Not committed:** the submodule and `.gitmodules` are staged, while `library.json`, `include/` and the brief are untracked. On the other device, pull, then run `git submodule update --init --recursive`. The check script does this.
+- **When `main.cpp` moves onto the kernel, update both `board-check` scripts:**
+  - `TICK_SYMBOL` becomes `xTickCount`.
+  - Add `SHPR3` `0xF0F00000`.
+  - Later, add the USART2 checks listed in the brief's "How to check it".
+
+**Project 1: Bring-up and GPIO** ([brief](docs/project-1-brief.md)). The code works, but these are still open:
 
 | Part | Status |
 |---|---|
@@ -87,9 +95,11 @@ From [PLAN.md](PLAN.md#ground-rules):
 |---|---|
 | `src/main.cpp` | Application entry point |
 | `lib/drivers/` | `gpio.hpp` (`hal::Gpio<PortBase, Pin>`), `clock.hpp` and `clock.cpp` (`hal::clock::init()`) |
+| `lib/freertos/` | `kernel/` (FreeRTOS-Kernel submodule, V11.3.3) and `library.json` (which files PlatformIO builds) |
+| `include/` | `FreeRTOSConfig.h` |
 | `test/test_toolchain/` | PC test that confirms C++11 mode. Real tests start in Project 2. |
 | `scripts/` | `build_flags.py` (PlatformIO extra script), plus the scripts above |
-| `docs/` | `environment-setup.md` and `project-1-brief.md` |
+| `docs/` | `new-machine-setup.md` (steps for another computer), `environment-setup.md` (why the configuration is the way it is), `new-project-bringup.md` (starting a new project on any chip), and the project briefs |
 | `disassemble.md` | My notes on reading listings |
 
 ## Commands
@@ -118,6 +128,9 @@ These all happened in this repo. The setup guide has a full [problems and fixes]
 - **Peripheral clocks need a delay.** After enabling one, read the `RCC` register back before touching the peripheral. On GPIOA, a bad read-modify-write of `MODER` could cut off the debug pins.
 - **A missing `extern "C"` on an interrupt handler fails silently.** The vector table entry stays at `Default_Handler` (`0x08000255`).
 - **OpenOCD output:** give each command its own `-c`, or `mdw` prints nothing.
+- **Libraries don't see the project's `include/`.** The kernel couldn't find `FreeRTOSConfig.h` until `library.json` added `-I$PROJECT_INCLUDE_DIR`.
+- **`snprintf` links the heap.** One `snprintf("%u")` pulls in `_malloc_r` and `_sbrk`, even though it didn't call them at run time.
+- **Testing a different `main` without touching `src/`:** set `PLATFORMIO_SRC_DIR` to another folder for one build. Afterwards, clean and rebuild, and flash the real firmware back.
 - **`pio debug` with extra arguments** needs `-x .pioinit` included.
 
 ## Hardware notes

@@ -11,7 +11,7 @@
 - [x] Environment set up and tested ([setup guide](docs/environment-setup.md))
 - [ ] Parts ordered
 - [ ] Project 1: Bring-up and GPIO ([brief](docs/project-1-brief.md))
-- [ ] Project 2: FreeRTOS wrappers and UART logger
+- [ ] Project 2: FreeRTOS wrappers and UART logger ([brief](docs/project-2-brief.md))
 - [ ] Project 3: Actuators and fixed-rate task
 - [ ] Project 4: SPI IMU driver
 - [ ] Project 5: Estimator, PID and telemetry
@@ -68,9 +68,9 @@ These match how the company writes code, or stand in for it where the hardware d
 
 ### FreeRTOS
 
-This is the Project 2 plan, and it hasn't been built yet. The registry's FreeRTOS packages are old or third-party, so use the official kernel:
+The kernel build was set up and tested on the board on 2026-11-09. The [Project 2 brief](docs/project-2-brief.md#already-set-up) has the details. The registry's FreeRTOS packages are old or third-party, so this uses the official kernel:
 
-- **Source:** add [FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) as a git submodule pinned to a release tag, under `lib/freertos/kernel`, with a `library.json` beside it selecting the core files and the `GCC/ARM_CM4F` port.
+- **Source:** [FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) V11.3.3 as a git submodule under `lib/freertos/kernel`, with a `library.json` beside it selecting the core files and the `GCC/ARM_CM4F` port. The configuration is `include/FreeRTOSConfig.h`.
 - **No heap:** set `configSUPPORT_STATIC_ALLOCATION` to 1 and `configSUPPORT_DYNAMIC_ALLOCATION` to 0, and leave out every `heap_x.c`. Provide `vApplicationGetIdleTaskMemory`, plus `vApplicationGetTimerTaskMemory` if timers are on.
 - **Safety nets:** define `configASSERT`, set `configCHECK_FOR_STACK_OVERFLOW` to 2, and implement the overflow hook.
 - **Handler names:** map `vPortSVCHandler`, `xPortPendSVHandler` and `xPortSysTickHandler` to the CMSIS names `SVC_Handler`, `PendSV_Handler` and `SysTick_Handler`.
@@ -110,6 +110,8 @@ Full details are in the [Project 1 brief](docs/project-1-brief.md).
 - [ ] The map file and `arm-none-eabi-size` output make sense to you
 
 ### Project 2: FreeRTOS wrappers and UART logger (weeks 1–2)
+
+Full details are in the [Project 2 brief](docs/project-2-brief.md).
 
 **Build:** thin wrappers `Task<StackWords>`, `Queue<T, N>`, `Mutex` and `ScopedLock`, plus an interrupt-driven UART logger using `RingBuffer<T, N>`.
 
@@ -224,7 +226,7 @@ These were compile-tested with `-std=gnu++11` on GCC 5.4 (host) and Arm GCC 7.2 
 
 - **Silent interrupt failure:** a handler without `extern "C"` gets a mangled name, so the default handler runs instead of yours, with no build error.
 - **Global constructors:** they run before `main`, so touching peripherals in one happens before your clock setup. Use a separate `init()`.
-- **Hidden heap use:** `std::function` can allocate, and `std::vector` and `std::string` normally do. Newlib's `printf` family can too.
+- **Hidden heap use:** `std::function` can allocate, and `std::vector` and `std::string` normally do. Newlib's `printf` family can too: a single `snprintf("%u")` links `_malloc_r` and `_sbrk` into this build.
 - **`volatile` isn't enough:** it doesn't make data shared with an interrupt or task safe. Use `std::atomic` or a critical section.
 - **Exceptions are off:** `std::array::at()` can't report an error normally, so use a bounds check of your own.
 - **`F_CPU` is misleading:** PlatformIO defines it as 180 MHz, but the chip starts at 16 MHz until your code changes the clock. Use `SystemCoreClock`.
