@@ -3,14 +3,20 @@
 #include "task.h"
 #include "gpio.hpp"
 #include "clock.hpp"
+#include "custTask.hpp"
 #include <atomic>
-#include <cstddef>
+#include "queue.hpp"
 
-// std::atomic<std::uint32_t> msCounter{0};
 std::atomic<bool> btnPressed{false};
+std::atomic<uint32_t> cntr{1000};
 
-using Btn1 = hal::Gpio<GPIOC_BASE, 13>;
-uint32_t getTimeMs();
+using Btn1     = hal::Gpio<GPIOC_BASE, 13>;
+using taskInst = rtos::Task<configMINIMAL_STACK_SIZE>;
+static taskInst blinkTaskObj;
+static taskInst consumerTask;
+static taskInst producerTask;
+
+static rtos::Queue<uint16_t, 6> currQueue;
 
 extern "C" {
     void EXTI15_10_IRQHandler(void)
@@ -21,7 +27,6 @@ extern "C" {
         }
     }
 }
-
 
 void configureBtn() {
     RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
@@ -34,17 +39,13 @@ void configureBtn() {
     EXTI->FTSR |= EXTI_FTSR_TR13;
     EXTI->RTSR &= ~EXTI_RTSR_TR13;
 
-    NVIC_EnableIRQ(EXTI15_10_IRQn);
     NVIC_SetPriority(EXTI15_10_IRQn, 5);
+    NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
-
-static StackType_t blinkTaskStack[configMINIMAL_STACK_SIZE];
-static StaticTask_t blinkTaskTCB;
 
 void blinkTask(void *arg)
 {
     (void) arg;
-    uint32_t delayCount = 1000; // ms Delay
     using Led = hal::Gpio<GPIOA_BASE, 5>;
     Led::enableClock();
     Led::setMode(hal::PinMode::Output);
@@ -55,34 +56,51 @@ void blinkTask(void *arg)
     configureBtn();
 
     TickType_t last = xTaskGetTickCount();
-    std::uint32_t lastPressed{0};
 
     while (true)
     {
-        // Btn pressed check
-        bool pressedCheck = btnPressed.exchange(false);
-        if (pressedCheck && (xTaskGetTickCount() - lastPressed > 50)) {
-            lastPressed = xTaskGetTickCount();
-            delayCount  = (delayCount == 1000)? 500: 1000;
-        }
-
         // LED updates
-        xTaskDelayUntil(&last, delayCount);
+        xTaskDelayUntil(&last, cntr.load(std::memory_order_acquire));
         Led::toggle();
+    }
+}
+
+
+void producerFn(void *arg)
+{
+    (void) arg;
+    uint16_t currData[6] = {200, 400, 500, 750, 1000, 1500};
+    uint8_t idx = 0;
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        currQueue.send(currData[idx++ % 6], portMAX_DELAY);
+    }
+}
+
+void consumerFn(void *arg)
+{
+    (void) arg;
+    uint16_t currData = 0;
+
+    while (true) {
+        if (currQueue.receive(currData, portMAX_DELAY)) {
+            cntr.store(currData, std::memory_order_release);
+        };
     }
 }
 
 int main()
 {
     hal::clock::init();
+    currQueue.init();
 
-    xTaskCreateStatic(  blinkTask,
-                        "Blink Task",
-                        configMINIMAL_STACK_SIZE,
-                        0,
-                        tskIDLE_PRIORITY + 1,
-                        blinkTaskStack,
-                        &blinkTaskTCB);
+    consumerTask.start(consumerFn, nullptr, "Consumer Task",
+                       tskIDLE_PRIORITY + 1);
+    producerTask.start(producerFn, nullptr, "Producer Task",
+                       tskIDLE_PRIORITY + 1);
+
+    blinkTaskObj.start(blinkTask, nullptr, "Blink Task",
+                       tskIDLE_PRIORITY + 1);
 
     vTaskStartScheduler();
 }
