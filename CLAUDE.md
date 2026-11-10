@@ -24,14 +24,14 @@ Each script has a Windows (`.ps1`) and Linux (`.sh`) version that behave the sam
 | Script | What it does | When to use it |
 |---|---|---|
 | `check-setup` | Checks git, PlatformIO and `g++`, does a clean build that fails on warnings, and runs the PC tests. With `-Board` or `--board`, it also flashes and runs the board check. | After switching devices or pulling |
-| `board-check` | Reads registers through the ST-LINK and compares them with the current project's expected values. Also checks LD2 changes over 5 s. | After flashing, to prove the board really runs the code |
+| `board-check` | Reads registers through the ST-LINK and compares them with the current project's expected values. Also checks the tick counter advances about 5000 and LD2 changes over 5 s. | After flashing, to prove the board really runs the code |
 | `listing` | Builds, then writes the vector table and disassembly with source to `.pio/build/nucleo_f446re/firmware.lst`, and opens it in VS Code | Reading the generated code |
 
 **When the expected board state changes**, for example a new clock setting, LED behaviour or peripheral, update the checks in **both** `board-check.ps1` and `board-check.sh`.
 
 ## Current state
 
-*Last updated 2026-11-08, on Windows.*
+*Last updated 2026-11-09, on Windows.*
 
 **Project 1: Bring-up and GPIO** ([brief](docs/project-1-brief.md)), in progress:
 
@@ -39,23 +39,22 @@ Each script has a Windows (`.ps1`) and Linux (`.sh`) version that behave the sam
 |---|---|
 | 1. `Gpio` template ([lib/drivers/gpio.hpp](lib/drivers/gpio.hpp)) | Done and reviewed. `MODER` reads `0xA8000400` on the board. |
 | 2. 180 MHz clock ([lib/drivers/clock.cpp](lib/drivers/clock.cpp)) | Done, reviewed and checked on the board. `SystemCoreClock` reads 180000000, and every register matches. |
-| 3. 1 kHz SysTick tick | **Next.** Not started. |
-| 4. Button interrupt (PC13, `EXTI15_10_IRQn`) | Not started |
+| 3. 1 kHz SysTick tick (in [src/main.cpp](src/main.cpp)) | Working on the board, with `getTimeMs()`. `SYST_RVR` reads `0x0002BF1F`, and `msCounter` advances about 5000 in 5 s. One fix pending, below. |
+| 4. Button interrupt (PC13, `EXTI15_10_IRQn`, in [src/main.cpp](src/main.cpp)) | Working on the board, reviewed 2026-11-09. `EXTICR4` reads `0x20`. A falling edge driven on PC13 through the debugger switched LD2 from 1000 ms to 500 ms and back, and a second edge 10 ms later was ignored. Small fixes pending, below. |
 | Design question (template vs ordinary class) | Not started |
-| Five experiments in the brief | Not started |
+| Five experiments in the brief | Experiment 1 (missing `extern "C"`) happened by accident on 2026-11-09 and was diagnosed. The other four aren't started. |
 
-**Small open items from reviews:**
+**Review fixes pending for the tick and button (2026-11-09):**
+- Remove the `if (now < last)` correction in the LED loop. Unsigned `now - last` already handles wraparound, and adding `0xFFFFFFFF` is the same as subtracting 1, so it's 1 ms late at the wrap. The wrap itself was tested on the board by writing `0xFFFFF000` to `msCounter`: the blink stayed at 1 s across zero.
+- In `configureBtn()`, the line that clears `EXTICR[3]` masks `EXTI15` but then sets `EXTI13_PC`. It only works because EXTI13's field resets to 0. Clear `SYSCFG_EXTICR4_EXTI13` instead, and fix the comment above it.
+- Read `RCC->APB2ENR` back after enabling the SYSCFG clock, as with the GPIO clocks.
+
+**Testing the button without pressing it:** halt, write `0x04000000` to `GPIOC_MODER` (`0x40020800`) so PC13 drives low, then write `0` to make it an input again. B1's pull-up limits the current. `EXTI_PR` then reads `0x2000`, and the interrupt runs on resume.
+
+**Small open items from earlier reviews:**
 - In `clock.cpp`, include `clock.hpp` first, and drop the unneeded `extern` in `clock.hpp`.
 - Optional: timeouts with an `enum class` status on the clock's ready-flag loops, and `constexpr` and `static_assert` checks on the PLL settings.
-- `src/main.cpp` still says "Toolchain check" at the top. Its float busy-wait loop is a placeholder until the tick replaces it, and it toggles LD2 only about every 3.5 s at 180 MHz.
 - `firmware.lst` in the repo root is an old listing. The `listing` script now writes to `.pio/`, which git ignores.
-
-**Hints for the tick:**
-- Call `SysTick_Config(SystemCoreClock / 1000u)` after `hal::clock::init()`.
-- Declare the handler `extern "C" void SysTick_Handler()`.
-- Use a `std::atomic<std::uint32_t>` counter.
-- Use the wraparound-safe `now - last >= period` comparison.
-- To check it, read the counter twice about 2 s apart. It should increase by about 2000.
 
 **Parts:** whether the IMU, 5 V servo supply and logic analyzer have been ordered isn't recorded yet. Project 3 needs the supply, and Project 4 the IMU.
 

@@ -105,7 +105,7 @@ Full details are in the [Project 1 brief](docs/project-1-brief.md).
 
 **Done when:**
 
-- [ ] LD2 blinks at a measured rate, and the button toggles it through an interrupt
+- [x] LD2 blinks at a measured rate, and the button toggles it through an interrupt
 - [ ] You've compared the `Gpio` class's disassembly with equivalent C, using `arm-none-eabi-objdump`
 - [ ] The map file and `arm-none-eabi-size` output make sense to you
 
