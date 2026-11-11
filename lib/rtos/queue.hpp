@@ -18,6 +18,11 @@ private:
     uint8_t data[N * itemSize];
 
 public:
+    Queue()                             = default;
+    Queue(const Queue &q)               = delete;
+    Queue& operator=(const Queue &q)    = delete;
+    Queue(Queue &&q)                    = delete;
+    Queue& operator=(Queue &&q)         = delete;
 
     void init()
     {
@@ -25,20 +30,9 @@ public:
         configASSERT(xQueue != nullptr);
     }
 
-    Queue(const Queue &q)               = delete;
-    Queue& operator=(const Queue &q)    = delete;
-    Queue(Queue &&q)                    = delete;
-    Queue& operator=(Queue &&q)         = delete;
-
-    ~Queue()
-    {
-        configASSERT(xQueue != nullptr);
-        vQueueDelete(xQueue);
-    }
-
     bool send(const T& item, TickType_t timeout)
     {
-        return xQueueSend(xQueue, item, timeout) == pdPASS;
+        return xQueueSend(xQueue, &item, timeout) == pdPASS;
     }
 
     bool receive(T &retItem, TickType_t timeout)
@@ -48,12 +42,12 @@ public:
 
     bool sendFromISR(const T& item, BaseType_t *priority)
     {
-        return xQueueSendFromISR(xQueue, item, priority) == pdPASS;
+        return xQueueSendFromISR(xQueue, &item, priority) == pdPASS;
     }
 
-    bool receiveFromISR(T &retItem, BaseType_t *priority)
+    bool receiveFromISR(T &retItem, BaseType_t *highPriority)
     {
-        return xQueueReceiveFromISR(xQueue, &retItem, priority) == pdPASS;
+        return xQueueReceiveFromISR(xQueue, &retItem, highPriority) == pdPASS;
     }
 };
 

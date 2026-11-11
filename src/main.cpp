@@ -6,6 +6,9 @@
 #include "custTask.hpp"
 #include <atomic>
 #include "queue.hpp"
+#include "ringBuffer.hpp"
+
+#define NUM_SIZE 8
 
 std::atomic<bool> btnPressed{false};
 std::atomic<uint32_t> cntr{1000};
@@ -15,8 +18,8 @@ using taskInst = rtos::Task<configMINIMAL_STACK_SIZE>;
 static taskInst blinkTaskObj;
 static taskInst consumerTask;
 static taskInst producerTask;
-
-static rtos::Queue<uint16_t, 6> currQueue;
+static control::RingBuffer<uint16_t, NUM_SIZE> ringBuf;
+static rtos::Queue<uint16_t, NUM_SIZE> currQueue;
 
 extern "C" {
     void EXTI15_10_IRQHandler(void)
@@ -69,11 +72,14 @@ void blinkTask(void *arg)
 void producerFn(void *arg)
 {
     (void) arg;
-    uint16_t currData[6] = {200, 400, 500, 750, 1000, 1500};
+    uint16_t currData[NUM_SIZE] = {200, 400, 500, 750, 1000, 1500, 100, 150};
     uint8_t idx = 0;
     while (true) {
-        vTaskDelay(pdMS_TO_TICKS(3000));
-        currQueue.send(currData[idx++ % 6], portMAX_DELAY);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (ringBuf.push(currData[idx])) {
+            idx = (idx + 1) % NUM_SIZE;
+        }
+        // currQueue.send(currData[idx++ % 6], portMAX_DELAY);
     }
 }
 
@@ -83,9 +89,12 @@ void consumerFn(void *arg)
     uint16_t currData = 0;
 
     while (true) {
-        if (currQueue.receive(currData, portMAX_DELAY)) {
+        if (ringBuf.pop(currData)) {
             cntr.store(currData, std::memory_order_release);
-        };
+        }
+        // if (currQueue.receive(currData, portMAX_DELAY)) {
+        //     cntr.store(currData, std::memory_order_release);
+        // };
     }
 }
 
