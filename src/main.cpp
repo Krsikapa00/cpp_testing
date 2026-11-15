@@ -7,8 +7,14 @@
 #include <atomic>
 #include "queue.hpp"
 #include "ringBuffer.hpp"
+#include "uart.hpp"
+#include "logger.hpp"
 
 #define NUM_SIZE 8
+
+using Console = hal::UartStatic<hal::Usart2Port, 115200>;
+extern "C" void USART2_IRQHandler(void) { Console::onInterrupt(); }
+static logging::Logger<Console> logger;
 
 std::atomic<bool> btnPressed{false};
 std::atomic<uint32_t> cntr{1000};
@@ -18,6 +24,8 @@ using taskInst = rtos::Task<configMINIMAL_STACK_SIZE>;
 static taskInst blinkTaskObj;
 static taskInst consumerTask;
 static taskInst producerTask;
+static taskInst fastLogTask;
+static taskInst slowLogTask;
 static control::RingBuffer<uint16_t, NUM_SIZE> ringBuf;
 static rtos::Queue<uint16_t, NUM_SIZE> currQueue;
 
@@ -98,9 +106,41 @@ void consumerFn(void *arg)
     }
 }
 
+// Brief step 7: two tasks logging at different rates and priorities. The fast one preempts the
+// slow one, so if the mutex didn't work their lines would interleave mid-line.
+void fastLogFn(void *arg)
+{
+    (void) arg;
+    TickType_t last = xTaskGetTickCount();
+    while (true) {
+        xTaskDelayUntil(&last, pdMS_TO_TICKS(10));
+        logging::Line<24> line;
+        line.append("t=").append(xTaskGetTickCount());
+        logger.log(line);
+    }
+}
+
+void slowLogFn(void *arg)
+{
+    (void) arg;
+    logger.log("boot");
+    TickType_t last = xTaskGetTickCount();
+    while (true) {
+        xTaskDelayUntil(&last, pdMS_TO_TICKS(500));
+        // Free stack in words: the lowest it has been. Under about 20 is too close.
+        logging::Line<64> line;
+        line.append("slow drops=").append(logger.dropped())
+            .append(" stack_free fast=").append(uxTaskGetStackHighWaterMark(fastLogTask.handle()))
+            .append(" slow=").append(uxTaskGetStackHighWaterMark(nullptr));
+        logger.log(line);
+    }
+}
+
 int main()
 {
     hal::clock::init();
+    Console::init(6);
+    logger.init();
     currQueue.init();
 
     consumerTask.start(consumerFn, nullptr, "Consumer Task",
@@ -110,6 +150,8 @@ int main()
 
     blinkTaskObj.start(blinkTask, nullptr, "Blink Task",
                        tskIDLE_PRIORITY + 1);
+    slowLogTask.start(slowLogFn, nullptr, "Slow Log", tskIDLE_PRIORITY + 2);
+    fastLogTask.start(fastLogFn, nullptr, "Fast Log", tskIDLE_PRIORITY + 3);
 
     vTaskStartScheduler();
 }

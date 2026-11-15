@@ -47,6 +47,17 @@ namespace hal {
                     set();
                 }
             }
+
+            static void setAF(uint8_t afSel) {
+                if (afSel > 0xF) {
+                    return;
+                }
+
+                uint8_t idx = Pin / 8;
+                uint8_t shift = (Pin % 8) * 4;
+
+                reg().AFR[idx] = (reg().AFR[idx] & ~(0xFu << shift)) | (afSel << shift);
+            }
     };
 
 }

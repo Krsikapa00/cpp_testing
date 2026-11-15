@@ -26,7 +26,7 @@ public:
         configASSERT(!xPortIsInsideInterrupt());
 
         BaseType_t ok = xSemaphoreGive(handle_);
-        configASSERT(ok != pdPASS);
+        configASSERT(ok == pdPASS);         // fails only if this task doesn't hold the mutex
 
         (void) ok;
     }
@@ -46,6 +46,9 @@ public:
     LockGuard& operator=(const LockGuard&&) = delete;
 
     ~LockGuard() { if (locked_) { mutex_.unlock(); } }
+
+    // True if the lock was taken: `if (!guard) { ... }`. Explicit, so it can't turn into an int.
+    explicit operator bool() const { return locked_; }
 
 private:
     Mutex &mutex_;

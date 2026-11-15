@@ -36,6 +36,13 @@ public:
         return true;
     }
 
+    // Free slots, for the producer to check before pushing a whole message. Meanwhile only the
+    // consumer can change it, and only upward, so the answer stays safe to act on. The consumer
+    // calling this gets an answer that may already be stale.
+    std::size_t freeSpace() const {
+        return N - (head_.load(std::memory_order_relaxed) - tail_.load(std::memory_order_acquire));
+    }
+
 private:
     std::atomic<std::size_t> head_{0};
     std::atomic<std::size_t> tail_{0};
